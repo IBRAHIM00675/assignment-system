@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
-const userRoute = require('./routes/userRoutes');
+const userRoutes = require('./routes/userRoutes');
+const assignmentRoutes = require('./routes/assignmentRoutes')
 
 const app = express();
 
@@ -9,7 +10,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use( userRoute);
+app.use( userRoutes);
+app.use( assignmentRoutes)
 
 // 404 Handler
 app.use((req, res, next) => {
