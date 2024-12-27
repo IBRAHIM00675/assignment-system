@@ -10,8 +10,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use( userRoutes);
-app.use( assignmentRoutes)
+app.use("/api", userRoutes);
+app.use("/api", assignmentRoutes)
 
 // 404 Handler
 app.use((req, res, next) => {

@@ -1,9 +1,11 @@
 const express = require('express');
 const routes = express.Router();
 const assignmentController = require('../controllers/assignmentController');
+const upload = require('../uploads/fs');
+const { verifyAccessToken, restrict } = require('../helpers/jwtHelper');
 
 // Upload Assignment
-routes.post('/upload', assignmentController.upload);
+routes.post('/upload', verifyAccessToken, restrict('admin'), upload.single('file'), assignmentController.upload);
 
 // Get All Assignments (Admin)
 routes.get('/getAllAssignments', assignmentController.getAllAssignments);

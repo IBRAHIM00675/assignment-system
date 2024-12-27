@@ -29,6 +29,8 @@ module.exports = {
             if (err) {
                 return next(createError.Unauthorized())
             }
+            console.log("Token payload:", payload); // Log the payload for debugging
+
             req.payload = payload;
             next()
       })

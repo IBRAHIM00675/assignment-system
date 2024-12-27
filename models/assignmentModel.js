@@ -8,13 +8,13 @@ module.exports = (sequelize, DataTypes) => {
         user_id: {
             type: DataTypes.INTEGER,
             references: {
-                model: 'Users',  // Reference to User model
-                key: 'user_id'
+                model: 'User ',  // Ensure this matches the actual User model name
+                key: 'id'
             },
             allowNull: false,
         },
         file_path: {
-            type: DataTypes.STRING,
+            type: DataTypes.TEXT,  // Use TEXT if file paths can be long
             allowNull: false,
         },
         uploaded_at: {
@@ -22,8 +22,8 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: DataTypes.NOW,
         }
     }, {
-        tableName: 'assignments',  // Ensure the table name matches
-        timestamps: false
+        tableName: 'assignments',
+        timestamps: true
     });
 
     // Associations
@@ -35,4 +35,4 @@ module.exports = (sequelize, DataTypes) => {
     };
 
     return Assignment;
-};
+}
