@@ -8,7 +8,7 @@ module.exports = {
             const payload = {UserId, role:userRole}
             const secret = process.env.ACCESS_TOKEN_SECRET
             const options = {
-                expiresIn: '15m',
+                expiresIn: '1h',
                 issuer: 'ibrahim',
                 audience: String(UserId)
             }
@@ -30,7 +30,7 @@ module.exports = {
                 return next(createError.Unauthorized())
             }
             console.log("Token payload:", payload); // Log the payload for debugging
-
+            
             req.payload = payload;
             next()
       })
@@ -69,7 +69,7 @@ module.exports = {
 
     restrict: (...allowedRoles) =>{
         return(req, res, next)=>{
-            const userRole = req.payload.role
+            const userRole = req.payload?.role
 
             if(!userRole || !allowedRoles.includes(userRole)){
                 return next(createError.Forbidden('Sorry! You do not have permission to perform this action'))
