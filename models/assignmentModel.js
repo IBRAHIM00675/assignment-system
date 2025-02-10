@@ -8,13 +8,13 @@ module.exports = (sequelize, DataTypes) => {
         user_id: {
             type: DataTypes.INTEGER,
             references: {
-                model: 'User ',  // Ensure this matches the actual User model name
-                key: 'id'
+                model: 'users', 
+                key: 'user_id',
             },
             allowNull: false,
         },
         file_path: {
-            type: DataTypes.TEXT,  // Use TEXT if file paths can be long
+            type: DataTypes.TEXT,
             allowNull: false,
         },
         uploaded_at: {
@@ -26,7 +26,6 @@ module.exports = (sequelize, DataTypes) => {
         timestamps: true
     });
 
-    // Associations
     Assignment.associate = (models) => {
         Assignment.belongsTo(models.User, {
             foreignKey: 'user_id',
@@ -35,4 +34,4 @@ module.exports = (sequelize, DataTypes) => {
     };
 
     return Assignment;
-}
+};

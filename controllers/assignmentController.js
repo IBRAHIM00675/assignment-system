@@ -20,18 +20,24 @@ module.exports = {
             }
     
             // Validate user authentication via the payload
-            if (!req.payload || !req.payload.UserId) {  // Make sure this is the correct field name from the payload
+            if (!req.payload || !req.payload.UserId) {
                 return next(createError.Unauthorized('User not authenticated'));
             }
     
+            // Fix file path to use forward slashes
+            const file_path = req.file.path.replace(/\\/g, '/');
+    
             // Validate file path using Joi schema (ensure assignmentSchema is defined properly)
-            const { file_path } = await assignmentSchema.validateAsync({ file_path: req.file.path });
+            const { error: validationError } = assignmentSchema.validate({ file_path });
+            if (validationError) {
+                return next(createError.BadRequest(validationError.message));
+            }
     
             // Create a new assignment in the database
             const assignment = await Assignment.create({
-                user_id: req.payload.UserId,  // Assuming 'UserId' is in the payload
-                file_path: file_path, // The validated file path
-                uploaded_at: new Date()  // Optionally set the upload timestamp
+                user_id: req.payload.UserId,
+                file_path: file_path, // Use the corrected file path
+                uploaded_at: new Date()
             });
     
             // Respond with success message and the assignment details
@@ -43,7 +49,7 @@ module.exports = {
             }
     
             // Log and handle any other internal errors
-            console.error(error);  // For debugging purposes
+            console.error(error); // For debugging purposes
             next(createError.InternalServerError('An error occurred while uploading the assignment'));
         }
     },
@@ -51,11 +57,11 @@ module.exports = {
 
     searchAssignments: async (req, res, next) => {
         try {
-            const { title, uploaded_at, user_id } = req.query;
+            const { title, uploaded_at, user_id, file_path } = req.query;
     
             // Access the UserId from the token payload
-            const userRole = req.payload?.role;  // Role from JWT
-            const userId = req.payload?.UserId; // Use UserId as in the token payload
+            const userRole = req.payload?.role;  
+            const userId = req.payload?.UserId; 
     
             if (!userRole || !userId) {
                 return next(createError.Unauthorized('User data missing from token'));
@@ -70,7 +76,7 @@ module.exports = {
     
             // Regular users can only search their own assignments
             if (userRole !== 'admin') {
-                whereClause.user_id = userId;  // Ensure userId is used correctly
+                whereClause.user_id = userId; 
             }
     
             // Filter by title (optional)
@@ -81,6 +87,11 @@ module.exports = {
             // Filter by upload date (optional)
             if (uploaded_at) {
                 whereClause.uploaded_at = { [Op.gte]: new Date(uploaded_at) };
+            }
+    
+            // Filter by file_path (optional)
+            if (file_path) {
+                whereClause.file_path = { [Op.like]: `%${file_path}%` };
             }
     
             const assignments = await Assignment.findAll({
@@ -98,7 +109,7 @@ module.exports = {
             next(error);
         }
     },
-
+    
     generateReport: async (req, res, next) => {
         try {
             // Check if the user is an admin
@@ -159,7 +170,7 @@ module.exports = {
             next(createError.InternalServerError('An error occurred while generating the report'));
         }
     },
-
+    
     
     // Get All Assignments (Admin)
     getAllAssignments: async (req, res, next) => {
@@ -176,7 +187,7 @@ module.exports = {
     // Get User's Assignments
     getUserAssignments: async (req, res, next) => {
         try {
-            const userId = req.user.id;
+            const userId = req.payload.UserId;
             const assignments = await Assignment.findAll({
                 where: { user_id: userId }
             });

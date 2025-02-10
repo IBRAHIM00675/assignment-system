@@ -4,8 +4,11 @@ const assignmentController = require('../controllers/assignmentController');
 const upload = require('../uploads/fs');
 const { verifyAccessToken, restrict } = require('../helpers/jwtHelper');
 
+
 // Upload Assignment
 routes.post('/upload', verifyAccessToken, upload.single('file'), assignmentController.upload);
+
+
 
 // users can search their own assignments
 routes.get('/search', verifyAccessToken, assignmentController.searchAssignments);
@@ -19,7 +22,7 @@ routes.get('/getAllAssignments', verifyAccessToken, restrict('admin'), assignmen
 // Get Assignments by User (Authenticated User)
 routes.get('/getUserAssignments', verifyAccessToken, assignmentController.getUserAssignments);
 
-routes.get('/getAssignmentById/:id', verifyAccessToken, restrict('admin'), assignmentController.getAssignmentById);
+routes.get('/getAssignmentById/:id', verifyAccessToken,  assignmentController.getAssignmentById);
 
 routes.patch('/updateAssignment/:id', verifyAccessToken, restrict('admin'), assignmentController.updateAssignment);
 
