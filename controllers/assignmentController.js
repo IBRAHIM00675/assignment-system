@@ -5,122 +5,155 @@ const { Op } = require('sequelize');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const fs = require('fs');
 const path = require('path');
+
 const Assignment = db.Assignment;
 const User = db.User;
 
 module.exports = {
     upload: async (req, res, next) => {
         try {
-            // Log the file object for debugging
-            console.log(req.file);
-    
-            // Check if file is uploaded
-            if (!req.file) {
-                return next(createError.BadRequest('File is required'));
-            }
-    
-            // Validate user authentication via the payload
-            if (!req.payload || !req.payload.UserId) {
-                return next(createError.Unauthorized('User not authenticated'));
-            }
-    
-            // Fix file path to use forward slashes
-            const file_path = req.file.path.replace(/\\/g, '/');
-    
-            // Validate file path using Joi schema (ensure assignmentSchema is defined properly)
-            const { error: validationError } = assignmentSchema.validate({ file_path });
-            if (validationError) {
-                return next(createError.BadRequest(validationError.message));
-            }
-    
-            // Create a new assignment in the database
+            if (!req.file) return next(createError.BadRequest('File is required'));
+            if (!req.user?.id) return next(createError.Unauthorized('User not authenticated'));
+
+            const file_path = req.file.path.replace(/\\/g, '/'); 
+            
+            // Validate file path
+            const { error } = assignmentSchema.validate({ file_path });
+            if (error) return next(createError.BadRequest(error.message));
+
             const assignment = await Assignment.create({
-                user_id: req.payload.UserId,
-                file_path: file_path, // Use the corrected file path
+                user_id: req.user.id,
+                file_path,
                 uploaded_at: new Date()
             });
-    
-            // Respond with success message and the assignment details
+
             res.status(201).json({ message: 'Assignment uploaded successfully', assignment });
         } catch (error) {
-            // Handle Joi validation errors
-            if (error.isJoi) {
-                return next(createError.BadRequest(error.message));
-            }
-    
-            // Log and handle any other internal errors
-            console.error(error); // For debugging purposes
             next(createError.InternalServerError('An error occurred while uploading the assignment'));
         }
     },
-    
 
     searchAssignments: async (req, res, next) => {
         try {
             const { title, uploaded_at, user_id, file_path } = req.query;
-    
-            // Access the UserId from the token payload
-            const userRole = req.payload?.role;  
-            const userId = req.payload?.UserId; 
-    
-            if (!userRole || !userId) {
-                return next(createError.Unauthorized('User data missing from token'));
-            }
-    
+            const { id: userId, role } = req.user;
+
+            if (!userId) return next(createError.Unauthorized('User data missing from token'));
+
             let whereClause = {};
-    
-            // Search for a specific user (Admin Only)
-            if (user_id && userRole === 'admin') {
-                whereClause.user_id = user_id;
-            }
-    
-            // Regular users can only search their own assignments
-            if (userRole !== 'admin') {
-                whereClause.user_id = userId; 
-            }
-    
-            // Filter by title (optional)
-            if (title) {
-                whereClause.title = { [Op.like]: `%${title}%` };
-            }
-    
-            // Filter by upload date (optional)
-            if (uploaded_at) {
-                whereClause.uploaded_at = { [Op.gte]: new Date(uploaded_at) };
-            }
-    
-            // Filter by file_path (optional)
-            if (file_path) {
-                whereClause.file_path = { [Op.like]: `%${file_path}%` };
-            }
-    
+            if (user_id && role === 'admin') whereClause.user_id = user_id;
+            if (role !== 'admin') whereClause.user_id = userId;
+
+            if (title) whereClause.title = { [Op.like]: `%${title}%` };
+            if (uploaded_at) whereClause.uploaded_at = { [Op.gte]: new Date(uploaded_at) };
+            if (file_path) whereClause.file_path = { [Op.like]: `%${file_path}%` };
+
             const assignments = await Assignment.findAll({
                 where: whereClause,
-                include: [{
-                    model: User,
-                    as: 'user',
-                    attributes: ['email', 'role']
-                }]
+                include: [{ model: User, as: 'user', attributes: ['email', 'role'] }]
             });
-    
+
             res.status(200).json(assignments);
         } catch (error) {
-            console.error('Search error:', error);
             next(error);
         }
     },
-    
+
+    // Get All Assignments (Admin)
+getAllAssignments: async (req, res, next) => {
+    try {
+        const assignments = await Assignment.findAll({
+            include: [{
+                model: User,
+                as: 'user', 
+                attributes: ['email', 'role'] // Fetch email and role
+            }]
+        });
+
+        res.status(200).json(assignments);
+    } catch (error) {
+        console.error("Error fetching assignments:", error);
+        next(error);
+    }
+},
+
+// Get Assignments for a Specific User (Normal Users)
+getUserAssignments: async (req, res, next) => {
+    try {
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+
+        const userId = req.user.id;
+        const assignments = await Assignment.findAll({
+            where: { user_id: userId },
+            include: [{
+                model: User,
+                as: 'user',
+                attributes: ['email']
+            }]
+        });
+
+        res.status(200).json(assignments);
+    } catch (error) {
+        console.error("Error fetching user assignments:", error);
+        next(error);
+    }
+},
+
+
+
+    getAssignmentById: async (req, res, next) => {
+        try {
+            const assignment = await Assignment.findOne({
+                where: { id: req.params.id },
+                include: { model: User, as: "user", attributes: ["email"] }
+            });
+
+            if (!assignment) return next(createError.NotFound(`Assignment with ID ${req.params.id} not found`));
+
+            res.status(200).json(assignment);
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    updateAssignment: async (req, res, next) => {
+        try {
+            const { file_path } = req.body;
+            const assignment = await Assignment.findOne({ where: { id: req.params.id } });
+
+            if (!assignment) return next(createError.NotFound(`Assignment with ID ${req.params.id} not found`));
+            if (assignment.user_id !== req.user.id) return next(createError.Forbidden('You do not have permission'));
+
+            await assignment.update({ file_path });
+            res.status(200).json({ message: `Assignment updated successfully`, assignment });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    deleteAssignment: async (req, res, next) => {
+        try {
+            const assignment = await Assignment.findOne({ where: { id: req.params.id } });
+            if (!assignment) return next(createError.NotFound(`Assignment with ID ${req.params.id} not found`));
+            if (assignment.user_id !== req.user.id) return next(createError.Forbidden('You do not have permission'));
+
+            await Assignment.destroy({ where: { id: req.params.id } });
+            res.status(200).json({ message: `Assignment deleted successfully` });
+        } catch (error) {
+            next(error);
+        }
+    },
     generateReport: async (req, res, next) => {
         try {
             // Check if the user is an admin
-            const userRole = req.payload.role;
+            const userRole = req.user.role;
             if (userRole !== 'admin') {
                 return next(createError.Forbidden('Only admins can generate reports'));
             }
     
             // Fetch the assignment data, including the associated user data
             const assignments = await Assignment.findAll({
-                include: [{ model: User, as: 'user', attributes: ['user_id', 'email'] }]
+                include: [{ model: User, as: 'user', attributes: ['email'] }]
             });
     
             if (!assignments.length) {
@@ -171,108 +204,4 @@ module.exports = {
         }
     },
     
-    
-    // Get All Assignments (Admin)
-    getAllAssignments: async (req, res, next) => {
-        try {
-            const assignments = await Assignment.findAll({
-                include: [{ model: User, as: 'user', attributes: ['email'] }]
-            });
-            res.status(200).json(assignments); // Return assignments in JSON format
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    // Get User's Assignments
-    getUserAssignments: async (req, res, next) => {
-        try {
-            const userId = req.payload.UserId;
-            const assignments = await Assignment.findAll({
-                where: { user_id: userId }
-            });
-
-            res.status(200).json(assignments); // Return user's assignments in JSON format
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    // Get Assignment By ID
-    getAssignmentById: async (req, res, next) => {
-        try {
-            const assignmentId = req.params.id;
-            const assignment = await Assignment.findOne({ where: { id: assignmentId } });
-
-            if (!assignment) {
-                throw createError.NotFound(`Assignment with ID ${assignmentId} not found`);
-            }
-
-            res.status(200).json(assignment); // Return the assignment in JSON format
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    // Update Assignment
-    updateAssignment: async (req, res, next) => {
-        try {
-            const assignmentId = req.params.id;
-            const { file_path } = req.body;
-
-            const updatedInfo = {};
-            if (file_path) updatedInfo.file_path = file_path;
-
-            // Check if the assignment exists
-            const assignment = await Assignment.findOne({ where: { id: assignmentId } });
-            if (!assignment) {
-                throw createError.NotFound(`Assignment with ID ${assignmentId} not found`);
-            }
-
-            // Optional: Check if the user is the owner of the assignment
-            if (assignment.user_id !== req.user.id) {
-                return next(createError.Forbidden('You do not have permission to update this assignment'));
-            }
-
-            const [updated] = await Assignment.update(updatedInfo, {
-                where: { id: assignmentId }
-            });
-
-            if (!updated) {
-                throw createError.NotFound(`Assignment with ID ${assignmentId} not found`);
-            }
-
-            res.status(200).json({ message: `Assignment ${assignmentId} updated successfully` });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    // Delete Assignment
-    deleteAssignment: async (req, res, next) => {
-        try {
-            const assignmentId = req.params.id;
-
-            // Check if the assignment exists
-            const assignment = await Assignment.findOne({ where: { id: assignmentId } });
-            if (!assignment) {
-                throw createError.NotFound(`Assignment with ID ${assignmentId} not found`);
-            }
-
-            // Optional: Check if the user is the owner of the assignment
-            if (assignment.user_id !== req.user.id) {
-                return next(createError.Forbidden('You do not have permission to delete this assignment'));
-            }
-
-            const deleted = await Assignment.destroy({ where: { id: assignmentId } });
-
-            if (!deleted) {
-                throw createError.NotFound(`Assignment with ID ${assignmentId} not found`);
-            }
-
-            res.status(200).json({ message: `Assignment with ID ${assignmentId} has been deleted` });
-        } catch (error) {
-            next(error);
-        }
-    }
-}
+};
