@@ -3,13 +3,8 @@ const bcrypt = require('bcrypt')
 const createError = require('http-errors')
 const {signAccessToken, signRefreshToken} = require('../helpers/jwtHelper')
 const {authSchema} = require('../helpers/validationSchema');
-const sendEmail = require('../email/sendEmail'); // Import the sendEmail function
-const transporter = require('../email/transporter'); // Adjust the path as necessary
-const { Op } = require('sequelize'); 
-
 
 const User = db.User;
-
 
 module.exports = {
 
@@ -164,77 +159,6 @@ module.exports = {
                 return next(createError.BadRequest("Invalid username/password"));
             }
             next(error);
-        }
-    },
-
-
-     // Function to send password reset email
-     sendPasswordResetEmail: async (user, email) => {
-        const resetToken = user.generatePasswordResetToken(); // Ensure this method is defined in your User model
-        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-        await user.save(); // Save the user with the new token and expiration
-
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: email,
-            subject: 'Password Reset',
-            text: `You are receiving this email because you requested a password reset.\n\n` +
-                  `Please click the following link to reset your password:\n` +
-                  `http://localhost:3000/reset-password?token=${resetToken}\n\n` +
-                  `If you did not request this, please ignore this email.`
-        };
-
-        await transporter.sendMail(mailOptions); // Send the email
-    },
-
-    // Function to reset user password
-    resetUserPassword: async (user, newPassword) => {
-        const hashedPassword = await bcrypt.hash(newPassword, 12);
-        user.password = hashedPassword; // Set the hashed password
-        user.resetPasswordToken = null; // Clear the token
-        user.resetPasswordExpires = null; // Clear the expiration
-        await user.save(); // Save the updated user
-    },
-
-    // Handle password reset logic
-    handlePasswordReset: async (req, res, next) => {
-        const { email, token, newPassword } = req.body;
-
-        try {
-            // If email is provided, handle password reset request
-            if (email) {
-                const user = await User.findOne({ where: { email } });
-
-                if (!user) {
-                    return next(createError.NotFound('User  not found'));
-                }
-
-                await module.exports.sendPasswordResetEmail(user, email); // Send the reset email
-                return res.status(200).send('Password reset email sent!');
-            }
-
-            // If token and newPassword are provided, handle password reset
-            if (token && newPassword) {
-                const user = await User.findOne({
-                    where: {
-                        resetPasswordToken: token,
-                        resetPasswordExpires: { [Op.gt]: Date.now() } // Check if token is not expired
-                    }
-                });
-
-                if (!user) {
-                    return next(createError.BadRequest('Password reset token is invalid or has expired.'));
-                }
-
-                await module.exports.resetUserPassword(user, newPassword); // Reset the user's password
-                return res.status(200).send('Password has been reset successfully.');
-            }
-
-            // If neither email nor token is provided, return an error
-            return next(createError.BadRequest('Email or token must be provided'));
-        } catch (error) {
-            console.error('Error occurred:', error);
-            return next(createError.InternalServerError('An error occurred while processing the request'));
         }
     },
 }

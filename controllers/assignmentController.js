@@ -37,27 +37,51 @@ module.exports = {
         try {
             const { title, uploaded_at, user_id, file_path } = req.query;
             const { id: userId, role } = req.user;
-
+    
             if (!userId) return next(createError.Unauthorized('User data missing from token'));
-
+    
             let whereClause = {};
-            if (user_id && role === 'admin') whereClause.user_id = user_id;
-            if (role !== 'admin') whereClause.user_id = userId;
-
-            if (title) whereClause.title = { [Op.like]: `%${title}%` };
-            if (uploaded_at) whereClause.uploaded_at = { [Op.gte]: new Date(uploaded_at) };
-            if (file_path) whereClause.file_path = { [Op.like]: `%${file_path}%` };
-
+    
+            // Restrict user_id access based on role
+            if (role === 'admin' && user_id) {
+                whereClause.user_id = user_id;
+            } else {
+                whereClause.user_id = userId;
+            }
+    
+            // Search by title (case-insensitive match)
+            if (title) whereClause.title = { [Op.iLike]: `%${title}%` }; 
+    
+            // Ensure uploaded_at is parsed correctly
+            if (uploaded_at) {
+                const parsedDate = new Date(uploaded_at);
+            
+                if (!isNaN(parsedDate)) {
+                    whereClause.uploaded_at = {
+                        [Op.gte]: parsedDate.toISOString().slice(0, 19).replace('T', ' '), // Convert to SQL format
+                    };
+                }
+            }
+            
+    
+            // Search by file path
+            if (file_path) whereClause.file_path = { [Op.iLike]: `%${file_path}%` };
+    
             const assignments = await Assignment.findAll({
                 where: whereClause,
                 include: [{ model: User, as: 'user', attributes: ['email', 'role'] }]
             });
-
+    
+            if (assignments.length === 0) {
+                return res.status(404).json({ message: 'No assignments found.' });
+            }
+    
             res.status(200).json(assignments);
         } catch (error) {
             next(error);
         }
     },
+    
 
     // Get All Assignments (Admin)
 getAllAssignments: async (req, res, next) => {
